@@ -5,4 +5,5 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 
 
-## [0.2.0](../../releases/tag/v0.2.0) (2026-04-17)## [0.1.0](../../releases/tag/v0.1.0) (2026-04-16)
+
+## [0.2.1](../../releases/tag/v0.2.1) (2026-05-19)## [0.2.0](../../releases/tag/v0.2.0) (2026-04-17)## [0.1.0](../../releases/tag/v0.1.0) (2026-04-16)
