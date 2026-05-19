@@ -35,6 +35,7 @@ final class PreviewWindowController: NSWindowController {
         window.title = "Himi Recorder"
         window.center()
         window.minSize = NSSize(width: 480, height: 400)
+        window.isReleasedWhenClosed = false
         window.setAccessibilityIdentifier("previewWindow")
         
         super.init(window: window)
@@ -200,6 +201,20 @@ final class PreviewWindowController: NSWindowController {
     
     func loadVideo(at url: URL) {
         self.videoURL = url
+        
+        // For LSUIElement apps, temporarily become a regular app so the window can be activated
+        NSApp.setActivationPolicy(.regular)
+        
+        // Show the window first, before assigning the player
+        showWindow(nil)
+        window?.makeKeyAndOrderFront(nil)
+        if #available(macOS 14.0, *) {
+            NSApp.activate()
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        
+        // Assign player after window is visible to avoid AVPlayerView rendering issues
         player = AVPlayer(url: url)
         playerView.player = player
         
@@ -214,10 +229,6 @@ final class PreviewWindowController: NSWindowController {
         }
         
         setupTimeObserver()
-        
-        showWindow(nil)
-        window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
     }
     
     // MARK: - Speed
@@ -472,8 +483,11 @@ final class PreviewWindowController: NSWindowController {
             player?.removeTimeObserver(observer)
             timeObserver = nil
         }
+        playerView.player = nil
         player = nil
         close()
+        // Restore LSUIElement (accessory) activation policy
+        NSApp.setActivationPolicy(.accessory)
     }
 }
 
