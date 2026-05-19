@@ -259,6 +259,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     /// Step 5: Stop recording
     private func stopRecording() {
+        print("[AppDelegate] stopRecording: begin")
         captureEngine?.stopCapture()
         captureEngine = nil
         
@@ -274,19 +275,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         removeEscMonitor()
         
-        guard let writer = videoWriter, let _ = tempVideoURL else { return }
+        guard let writer = videoWriter, let _ = tempVideoURL else {
+            print("[AppDelegate] stopRecording: no writer or tempVideoURL, aborting")
+            return
+        }
         
+        print("[AppDelegate] stopRecording: finishing video writing...")
         writer.finishWriting { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let tmpURL):
+                    print("[AppDelegate] stopRecording: write finished, tmpURL=\(tmpURL.path)")
                     // Rename .tmp → .mp4 now that writing is complete
                     let mp4URL = tmpURL.deletingPathExtension().appendingPathExtension("mp4")
-                    try? FileManager.default.moveItem(at: tmpURL, to: mp4URL)
+                    do {
+                        try FileManager.default.moveItem(at: tmpURL, to: mp4URL)
+                        print("[AppDelegate] stopRecording: renamed to \(mp4URL.path)")
+                    } catch {
+                        print("[AppDelegate] stopRecording: rename failed: \(error)")
+                    }
                     self?.tempVideoURL = mp4URL
                     self?.showPreview(url: mp4URL)
                 case .failure(let error):
-                    print("[AppDelegate] Failed to finish writing: \(error)")
+                    print("[AppDelegate] stopRecording: finishWriting failed: \(error)")
                     let alert = NSAlert()
                     alert.messageText = "录制失败"
                     alert.informativeText = error.localizedDescription
@@ -300,16 +311,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     /// Step 6: Show preview
     private func showPreview(url: URL) {
+        print("[AppDelegate] showPreview: url=\(url.path), fileExists=\(FileManager.default.fileExists(atPath: url.path))")
         let preview = PreviewWindowController()
         preview.onExport = { [weak self] exportedURL in
             print("[AppDelegate] Video exported to: \(exportedURL.path)")
             self?.cleanupTempFile()
         }
         preview.onCancel = { [weak self] in
+            print("[AppDelegate] Preview cancelled")
             self?.cleanupTempFile()
         }
         preview.loadVideo(at: url)
         self.previewController = preview
+        print("[AppDelegate] showPreview: preview window loaded")
     }
     
     // MARK: - Settings

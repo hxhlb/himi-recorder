@@ -40,6 +40,7 @@ final class PreviewWindowController: NSWindowController {
         
         super.init(window: window)
         setupUI()
+        print("[PreviewWindow] init: window created")
     }
     
     required init?(coder: NSCoder) {
@@ -47,6 +48,7 @@ final class PreviewWindowController: NSWindowController {
     }
     
     deinit {
+        print("[PreviewWindow] deinit")
         if let observer = timeObserver {
             player?.removeTimeObserver(observer)
         }
@@ -200,10 +202,12 @@ final class PreviewWindowController: NSWindowController {
     // MARK: - Public
     
     func loadVideo(at url: URL) {
+        print("[PreviewWindow] loadVideo: url=\(url.path)")
         self.videoURL = url
         
         // For LSUIElement apps, temporarily become a regular app so the window can be activated
         NSApp.setActivationPolicy(.regular)
+        print("[PreviewWindow] loadVideo: activationPolicy set to .regular")
         
         // Show the window first, before assigning the player
         showWindow(nil)
@@ -213,10 +217,12 @@ final class PreviewWindowController: NSWindowController {
         } else {
             NSApp.activate(ignoringOtherApps: true)
         }
+        print("[PreviewWindow] loadVideo: window shown and activated")
         
         // Assign player after window is visible to avoid AVPlayerView rendering issues
         player = AVPlayer(url: url)
         playerView.player = player
+        print("[PreviewWindow] loadVideo: AVPlayer assigned")
         
         // Set up trim bar with video duration
         let asset = AVAsset(url: url)
@@ -224,7 +230,10 @@ final class PreviewWindowController: NSWindowController {
             if let duration = try? await asset.load(.duration), duration.seconds > 0 && !duration.seconds.isNaN {
                 await MainActor.run {
                     self.trimView.totalDuration = duration.seconds
+                    print("[PreviewWindow] loadVideo: duration loaded = \(duration.seconds)s")
                 }
+            } else {
+                print("[PreviewWindow] loadVideo: failed to load duration or duration invalid")
             }
         }
         
@@ -299,7 +308,11 @@ final class PreviewWindowController: NSWindowController {
     // MARK: - Actions
     
     @objc private func exportAction() {
-        guard let videoURL = videoURL else { return }
+        print("[PreviewWindow] exportAction triggered")
+        guard let videoURL = videoURL else {
+            print("[PreviewWindow] exportAction: no videoURL")
+            return
+        }
         
         let savePanel = NSSavePanel()
         savePanel.allowedContentTypes = [.mpeg4Movie]
@@ -308,20 +321,27 @@ final class PreviewWindowController: NSWindowController {
         
         savePanel.beginSheetModal(for: window!) { [weak self] response in
             guard let self = self, response == .OK, let destinationURL = savePanel.url else { return }
+            print("[PreviewWindow] exportAction: exporting to \(destinationURL.path)")
             self.exportTrimmedVideo(from: videoURL, to: destinationURL)
         }
     }
     
     @objc private func cancelAction() {
+        print("[PreviewWindow] cancelAction triggered")
         cleanupAndClose()
         onCancel?()
     }
     
     @objc private func confirmAction() {
-        guard let videoURL = videoURL else { return }
+        print("[PreviewWindow] confirmAction triggered")
+        guard let videoURL = videoURL else {
+            print("[PreviewWindow] confirmAction: no videoURL")
+            return
+        }
         
         let needsTrim = trimView.startFraction > 0.001 || trimView.endFraction < 0.999
         let needsSpeed = abs(selectedSpeed - 1.0) > 0.01
+        print("[PreviewWindow] confirmAction: needsTrim=\(needsTrim), needsSpeed=\(needsSpeed), speed=\(selectedSpeed)")
         
         if !needsTrim && !needsSpeed {
             // No edits, copy original to clipboard directly
@@ -338,6 +358,7 @@ final class PreviewWindowController: NSWindowController {
     
     /// Copy a video file to the system pasteboard so it can be pasted in IM apps.
     private func copyVideoToClipboard(url: URL) {
+        print("[PreviewWindow] copyVideoToClipboard: url=\(url.path)")
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.writeObjects([url as NSURL])
@@ -359,6 +380,7 @@ final class PreviewWindowController: NSWindowController {
     /// Export the video with trim and speed applied.
     /// If `completion` is provided, calls it with the exported URL instead of the default onExport behavior.
     private func exportTrimmedVideo(from source: URL, to destination: URL, completion: ((URL) -> Void)? = nil) {
+        print("[PreviewWindow] exportTrimmedVideo: source=\(source.path), dest=\(destination.path)")
         let asset = AVAsset(url: source)
         
         Task {
@@ -366,6 +388,7 @@ final class PreviewWindowController: NSWindowController {
                 let duration = try await asset.load(.duration)
                 let totalSeconds = duration.seconds
                 guard !totalSeconds.isNaN && totalSeconds > 0 else {
+                    print("[PreviewWindow] exportTrimmedVideo: invalid duration (\(totalSeconds))")
                     await MainActor.run { self.showExportError("视频时长无效") }
                     return
                 }
@@ -376,6 +399,8 @@ final class PreviewWindowController: NSWindowController {
                 
                 let needsTrim = trimView.startFraction > 0.001 || trimView.endFraction < 0.999
                 let needsSpeed = abs(selectedSpeed - 1.0) > 0.01
+                
+                print("[PreviewWindow] exportTrimmedVideo: duration=\(totalSeconds)s, trim=[\(trimView.startFraction)...\(trimView.endFraction)], speed=\(selectedSpeed)")
                 
                 if !needsTrim && !needsSpeed {
                     await MainActor.run {
@@ -437,6 +462,7 @@ final class PreviewWindowController: NSWindowController {
                 await exporter.export()
                 
                 if exporter.status == .completed {
+                    print("[PreviewWindow] exportTrimmedVideo: export completed successfully")
                     await MainActor.run {
                         if let completion = completion {
                             completion(destination)
@@ -447,10 +473,12 @@ final class PreviewWindowController: NSWindowController {
                     }
                 } else {
                     let errorMsg = exporter.error?.localizedDescription ?? "未知错误"
+                    print("[PreviewWindow] exportTrimmedVideo: export failed: \(errorMsg)")
                     await MainActor.run { self.showExportError(errorMsg) }
                 }
                 
             } catch {
+                print("[PreviewWindow] exportTrimmedVideo: exception: \(error)")
                 await MainActor.run { self.showExportError(error.localizedDescription) }
             }
         }
@@ -478,6 +506,7 @@ final class PreviewWindowController: NSWindowController {
     }
     
     private func cleanupAndClose() {
+        print("[PreviewWindow] cleanupAndClose: begin")
         player?.pause()
         if let observer = timeObserver {
             player?.removeTimeObserver(observer)
@@ -488,6 +517,7 @@ final class PreviewWindowController: NSWindowController {
         close()
         // Restore LSUIElement (accessory) activation policy
         NSApp.setActivationPolicy(.accessory)
+        print("[PreviewWindow] cleanupAndClose: done")
     }
 }
 
